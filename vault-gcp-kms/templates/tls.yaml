@@ -1,0 +1,14 @@
+{{- if .Values.estafette.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ template "vault.fullname" . }}-letsencrypt-certificate
+  labels:
+    app.kubernetes.io/name: {{ template "vault.fullname" . }}
+    helm.sh/chart: {{ include "vault.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    estafette.io/letsencrypt-certificate: "true"
+    estafette.io/letsencrypt-certificate-hostnames: {{ .Values.estafette.hostname | quote }}
+{{- end }}

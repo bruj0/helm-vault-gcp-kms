@@ -1,0 +1,48 @@
+replicaCount: 3
+vaultInit:
+  repository: sethvargo/
+  name: vault-init
+  tag: 1.0.0
+
+vaultimage:
+  repository:
+  name: vault
+  tag: 1.0.3
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8200
+
+vault:
+  # Only used to enable dev mode. When in dev mode, the rest of this config
+  # section below is not used to configure Vault. See
+  # https://www.vaultproject.io/intro/getting-started/dev-server.html for more
+  # information.
+  dev: false
+  #
+  # Configure additional environment variables for the Vault containers
+  extraEnv: {}
+  #   - name: VAULT_API_ADDR
+  #     value: "https://vault.internal.domain.name:8200"
+  # Log level
+  # https://www.vaultproject.io/docs/commands/server.html#log-level
+  logLevel: "info"
+  readiness:
+    readyIfSealed: false
+    readyIfStandby: true
+    readyIfUninitialized: true
+  gcp:
+    bucket: vault-bucket
+    project: myproject
+    service_account_key:
+    kms:
+      region: global
+      key_ring: vault
+      crypto_key: vault-init
+      recovery_shares_num: 5
+      secret_recovery_threshold: 3
+
+estafette:
+  enabled: true
+  hostname: vault.example.com

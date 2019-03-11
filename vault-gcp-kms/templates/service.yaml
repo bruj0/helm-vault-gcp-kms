@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vault.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ template "vault.fullname" . }}
+    helm.sh/chart: {{ include "vault.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app: {{ template "vault.fullname" . }}
+  annotations:
+{{- if .Values.estafette.enabled }}  
+    estafette.io/cloudflare-dns: "true"
+    estafette.io/cloudflare-proxy: "false"
+    estafette.io/cloudflare-internal-hostnames: "{{  .Values.estafette.hostname }}"
+{{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: 443
+      targetPort: vault-port-tls
+      protocol: TCP
+      name: vault-port-tls
+  selector:
+    app.kubernetes.io/name: {{ template "vault.fullname" . }}

@@ -1,0 +1,176 @@
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "vault.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ template "vault.fullname" . }}
+    helm.sh/chart: {{ include "vault.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Values.labels }}
+{{ toYaml .Values.labels | indent 4 }}
+{{- end }}
+  annotations:
+{{ toYaml .Values.annotations | indent 4 }}
+spec:
+  serviceName: {{ template "vault.fullname" . }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+       app.kubernetes.io/name: {{ template "vault.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ template "vault.fullname" . }}
+        helm.sh/chart: {{ include "vault.chart" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- if .Values.labels }}
+{{ toYaml .Values.labels | indent 4 }}
+{{- end }}
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 60
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values: ["{{ template "vault.fullname" . }}"]
+              topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 10
+      containers:
+      - name: {{ .Chart.Name }}-init
+        image: "{{ .Values.vaultInit.repository }}{{ .Values.vaultInit.name }}:{{ .Values.vaultInit.tag }}"
+        imagePullPolicy: {{ default "IfNotPresent" .Values.vaultInit.IfNotPresent }}
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+        env:
+        - name: GCS_BUCKET_NAME
+          value: "{{ .Values.vault.gcp.bucket }}"
+        - name: KMS_KEY_ID
+          value: "projects/{{ .Values.vault.gcp.project }}/locations/global/keyRings/{{ .Values.vault.gcp.kms.key_ring }}/cryptoKeys/{{ .Values.vault.gcp.kms.crypto_key }}"
+        - name: VAULT_ADDR
+          value: "http://127.0.0.1:8200"
+        - name: VAULT_SECRET_SHARES
+          value: "{{ .Values.vault.gcp.kms.recovery_shares_num }}"
+        - name: VAULT_SECRET_THRESHOLD
+          value: "{{ .Values.vault.gcp.kms.secret_recovery_threshold }}"
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/gcp-cred/google-service-account.json"
+        volumeMounts:
+        - name: gcp-cred
+          mountPath: /gcp-cred
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.vaultimage.repository }}{{ .Values.vaultimage.name }}:{{ .Values.vaultimage.tag }}"
+        imagePullPolicy: {{ default "IfNotPresent" .Values.vaultimage.IfNotPresent }}
+        {{- if .Values.vault.dev }}
+        command: ["vault", "server", "-dev", "-dev-listen-address", "[::]:8200"]
+        {{- else }}
+        args: ["server"]
+        {{- end }}
+        securityContext:
+          capabilities:
+            add: ["IPC_LOCK"]
+        ports:
+        - containerPort: 8202
+          name: vault-port-tls
+          protocol: TCP
+        - containerPort: 8200
+          name: vault-port
+          protocol: TCP
+        - containerPort: 8201
+          name: cluster-port
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: gcp-cred
+          mountPath: /gcp-cred
+{{- if .Values.estafette.enabled }}          
+        - name: tls
+          mountPath: /etc/vault/tls/
+{{- end }}
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: "/gcp-cred/google-service-account.json"
+        - name: GOOGLE_PROJECT
+          value: {{ .Values.vault.gcp.project | quote }}
+        - name: VAULT_ADDR
+          value: "http://127.0.0.1:8200"
+        - name: POD_IP_ADDR
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: VAULT_LOG_LEVEL
+          value: {{ .Values.vault.logLevel | quote }}
+        {{- if .Values.vault.extraEnv }}
+{{ toYaml .Values.vault.extraEnv | indent 8 }}
+        {{- end }}
+        - name: VAULT_LOCAL_CONFIG
+          value: |
+            api_addr     = "https://{{ template "vault.fullname" . }}:{{ .Values.service.port }}"
+            cluster_addr = "https://$(POD_IP_ADDR):8201"
+            log_level =  {{ .Values.vault.logLevel | quote }}
+            ui = true
+            seal "gcpckms" {
+              credentials = "/gcp-cred/google-service-account.json"
+              project    = {{ .Values.vault.gcp.project | quote }}
+              region     = {{ .Values.vault.gcp.kms.region | quote }}
+              key_ring   = {{ .Values.vault.gcp.kms.key_ring | quote }}
+              crypto_key = {{ .Values.vault.gcp.kms.crypto_key | quote }}
+            }
+            storage "gcs" {
+              bucket     = {{ .Values.vault.gcp.bucket | quote }}
+              ha_enabled = "true"
+            }
+            listener "tcp" {
+              address     = "127.0.0.1:8200"
+              tls_disable = "true"
+            }
+            listener "tcp" {
+              address       = "127.0.0.1:8202"
+              tls_cert_file = "/etc/vault/tls/tls.crt"
+              tls_key_file  = "/etc/vault/tls/tls.key"
+              tls_disable_client_certs = true
+            }            
+            listener "tcp" {
+              address       = "$(POD_IP_ADDR):8202"
+              tls_cert_file = "/etc/vault/tls/tls.crt"
+              tls_key_file  = "/etc/vault/tls/tls.key"
+              tls_disable_client_certs = true
+            }
+        livenessProbe:
+          # Alive if it is listening for clustering traffic
+          httpGet:
+            path: /v1/sys/health?standbyok=true
+            port: 8202
+            scheme: HTTPS
+        readinessProbe:
+          httpGet:
+            path: /v1/sys/health?
+              {{- if .Values.vault.readiness.readyIfSealed -}}sealedcode=204&{{- end }}
+              {{- if .Values.vault.readiness.readyIfStandby -}}standbycode=204&{{- end }}
+              {{- if .Values.vault.readiness.readyIfUninitialized -}}uninitcode=204&{{- end }}
+            port: 8202
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: gcp-cred
+        secret:
+          defaultMode: 420
+          secretName: {{ template "vault.fullname" . }}-key
+{{- if .Values.estafette.enabled }}
+      - name: tls
+        secret:
+          defaultMode: 420
+          secretName: {{ template "vault.fullname" . }}-letsencrypt-certificate
+{{- end }}
