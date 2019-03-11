@@ -1,6 +1,6 @@
-# Vault Helm Chart
+# HashiCorp Vault Helm Chart
 
-This directory contains a Kubernetes chart to deploy a Vault to GKE with KMS unsealing.
+This directory contains a Kubernetes chart to deploy HashiCorp Vault to GKE with KMS unsealing.
 
 ## Prerequisites Details
 
