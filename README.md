@@ -9,7 +9,7 @@ This directory contains a Kubernetes chart to deploy HashiCorp Vault to GKE with
 
 ## Chart Details
 
-This chart will do the following:
+This chart will create the following Kubernetes resources:
 * A service pointing to a TLS enabled listener on vault
 * A statefulset of pods with a vault-init container that will unseal it from KMS
 
