@@ -116,7 +116,7 @@ spec:
         {{- end }}
         - name: VAULT_LOCAL_CONFIG
           value: |
-            api_addr     = "https://{{ template "vault.fullname" . }}:{{ .Values.service.port }}"
+            api_addr     = "https://{{ template "vault.fullname" . }}:443"
             cluster_addr = "https://$(POD_IP_ADDR):8201"
             log_level =  {{ .Values.vault.logLevel | quote }}
             ui = true
