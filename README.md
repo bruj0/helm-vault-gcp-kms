@@ -1,3 +1,11 @@
+- [HashiCorp Vault Helm Chart](#hashicorp-vault-helm-chart)
+  - [Prerequisites Details](#prerequisites-details)
+  - [Chart Details](#chart-details)
+  - [GCP Configurations](#gcp-configurations)
+  - [Helm Chart Configuration](#helm-chart-configuration)
+  - [How to install it](#how-to-install-it)
+  - [Using Vault](#using-vault)
+  
 # HashiCorp Vault Helm Chart
 
 This directory contains a Kubernetes chart to deploy HashiCorp Vault to GKE with KMS unsealing.
@@ -82,17 +90,10 @@ gcloud kms keys list --keyring=${VAULT_NAME} --location=global
 ```
 9. Create a service account and set this permissions
 
-From https://github.com/sethvargo/vault-init :
-```
-To use this service, the service account must have the following minimum scope(s):
-
-https://www.googleapis.com/auth/cloudkms
-https://www.googleapis.com/auth/devstorage.read_write
-
-Additionally, the service account must have the following minimum role(s):
-
-roles/cloudkms.cryptoKeyEncrypterDecrypter
-roles/storage.objectAdmin OR roles/storage.legacyBucketWriter
+```console 
+gcloud iam service-accounts create vault-server \
+  --display-name "vault service account" \
+  --project ${PROJECT}
 ```
 
 10. Give the service account permissions
@@ -105,34 +106,34 @@ gcloud kms keys add-iam-policy-binding \
   --role roles/cloudkms.cryptoKeyDecrypter
 ```
 
-## Configuration
+## Helm Chart Configuration
 
 The following table lists the configurable parameters of the Vault chart and their default values.
 
-|             Parameter             |              Description                 |               Default               |
-|-----------------------------------|------------------------------------------|-------------------------------------|
-| `replicaCount`                    | Number of replica pods to run            | `3`
-| `vaultInit.repository`            | Repository part of the container image URL     | `sethvargo` |
-| `vaultInit.name`                  | Name part of the container image URL           | `vault-init` |
-| `vaultInit.tag`                   | Tag part of the container image URL      | `1.0.0` |
-| `service.type`                    | Type of the Kubernetes service           | `ClusterIP` |
-| `service.port`                    |                                          | `8200` |
-| `vault.dev                        | Enable dev mode                          | `true` |
-| `vault.extraEnv`                  | Configure additional environment variables for the Vault containers | `{}` |
-| `vault.logLevel`                  | https://www.vaultproject.io/docs/commands/server.html#log-level | `info`|
-| `vault.readiness.readyIfSealed`   | `false` |
-| `vault.readiness.readyIfStandby`  | `true`| 
-| `vault.readiness.readyIfUninitialized` | `true` |
-| `vault.gcp.bucket` | `Data store bucket name` | `vault-bucket` |
-| `vault.gcp.project` | `GCP project name` | `myproject` |
-| `vault.gcp.service_account_key` | `JSON private key` | 
-| `vault.gcp.kms.region` | `KMS region` | `global` |
-| `vault.gcp.kms.key_ring` | |`vault` |
-| `vault.gcp.kms.crypto_key`| | `vault-init` |
-| `vault.gcp.kms.recovery_shares_num` | | `5` |
-| `vault.gcp.kms.secret_recovery_threshold` | |`3` |
-| `estafette.enabled` |`Enable estafette CD/CI support: https://estafette.io/usage/`  | `false` |
-| `estafette.hostname` | `Hostname to use for LetEncrypt and Cloudflare` | `vault.example.com` |
+| Parameter                                 | Description                                                         | Default             |
+| ----------------------------------------- | ------------------------------------------------------------------- | ------------------- |
+| `replicaCount`                            | Number of replica pods to run                                       | `3`                 |
+| `vaultInit.repository`                    | Repository part of the container image URL                          | `sethvargo`         |
+| `vaultInit.name`                          | Name part of the container image URL                                | `vault-init`        |
+| `vaultInit.tag`                           | Tag part of the container image URL                                 | `1.0.0`             |
+| `service.type`                            | Type of the Kubernetes service                                      | `ClusterIP`         |
+| `service.port`                            |                                                                     | `8200`              |
+| `vault.dev`                               | Enable dev mode                                                     | `true`              |
+| `vault.extraEnv`                          | Configure additional environment variables for the Vault containers | `{}`                |
+| `vault.logLevel`                          | https://www.vaultproject.io/docs/commands/server.html#log-level     | `info`              |
+| `vault.readiness.readyIfSealed`           | false                                                               |                     |
+| `vault.readiness.readyIfStandby`          | true                                                                |                     |
+| `vault.readiness.readyIfUninitialized`    | true                                                                |                     |
+| `vault.gcp.bucket`                        | Data store bucket name                                              | `vault-bucket`      |
+| `vault.gcp.project`                       | GCP project name                                                    | `myproject`         |
+| `vault.gcp.service_account_key`           | JSON private key                                                    |                     |
+| `vault.gcp.kms.region`                    | KMS region                                                          | `global`            |
+| `vault.gcp.kms.key_ring`                  |                                                                     | `vault`             |
+| `vault.gcp.kms.crypto_key`                |                                                                     | `vault-init`        |
+| `vault.gcp.kms.recovery_shares_num`       |                                                                     | `5`                 |
+| `vault.gcp.kms.secret_recovery_threshold` |                                                                     | `3`                 |
+| `estafette.enabled`                       | Enable estafette CD/CI support: https://estafette.io/usage/         | `false`             |
+| `estafette.hostname`                      | Hostname to use for LetEncrypt and Cloudflare                       | `vault.example.com` |
 
 
 ## How to install it
@@ -155,7 +156,19 @@ tooling         1               Mon Mar 11 17:15:06 2019        DEPLOYED        
 
 Once the Vault pod is ready, it can be accessed using a `kubectl port-forward`:
 
+1. Get the root token
+
 ```console
+$ export VAULT_TOKEN=$(gsutil cat gs://${BUCKET}/root-token.enc | \
+  base64 --decode | \
+  gcloud kms decrypt \
+    --project ${PROJECT} \
+    --location global \
+    --keyring ${VAULT_NAME} \
+    --key ${KEY_NAME} \
+    --ciphertext-file - \
+    --plaintext-file - 
+)
 $ kubectl port-forward svc/vault-svc 8200
 $ export VAULT_ADDR=https://127.0.0.1:8200
 $ vault status --tls-skip-verify
