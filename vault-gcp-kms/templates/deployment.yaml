@@ -1,6 +1,6 @@
 
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: {{ template "vault.fullname" . }}
   labels:
@@ -14,7 +14,6 @@ metadata:
   annotations:
 {{ toYaml .Values.annotations | indent 4 }}
 spec:
-  serviceName: {{ template "vault.fullname" . }}
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
@@ -39,7 +38,7 @@ spec:
                 matchExpressions:
                 - key: app
                   operator: In
-                  values: ["{{ template "vault.fullname" . }}"]
+                  values: [{{ template "vault.fullname" . }}]
               topologyKey: kubernetes.io/hostname
       terminationGracePeriodSeconds: 10
       containers:
@@ -117,7 +116,7 @@ spec:
         - name: VAULT_LOCAL_CONFIG
           value: |
             api_addr     = "https://{{ template "vault.fullname" . }}:443"
-            cluster_addr = "https://$(POD_IP_ADDR):8201"
+            cluster_addr = "https://$(POD_IP_ADDR):8203"
             log_level =  {{ .Values.vault.logLevel | quote }}
             ui = true
             seal "gcpckms" {
@@ -155,10 +154,7 @@ spec:
             scheme: HTTPS
         readinessProbe:
           httpGet:
-            path: /v1/sys/health?
-              {{- if .Values.vault.readiness.readyIfSealed -}}sealedcode=204&{{- end }}
-              {{- if .Values.vault.readiness.readyIfStandby -}}standbycode=204&{{- end }}
-              {{- if .Values.vault.readiness.readyIfUninitialized -}}uninitcode=204&{{- end }}
+            path: /v1/sys/health
             port: 8202
             scheme: HTTPS
           initialDelaySeconds: 5

@@ -170,6 +170,12 @@ $ export VAULT_TOKEN=$(gsutil cat gs://${BUCKET}/root-token.enc | \
     --plaintext-file - 
 )
 $ kubectl port-forward svc/tooling-vault-gcp-kms 4443:443
-$ export VAULT_ADDR=https://127.0.0.1:4443
+$ VAULT_CLUSTER_ADDR=https://127.0.0.1:4443
+$ VAULT_REDIRECT_ADDR=https://127.0.0.1:4443
+$ VAULT_ADDR=https://127.0.0.1:4443
+$ VAULT_NAME=vault
+$ VAULT_SKIP_VERIFY=true
 $ vault status --tls-skip-verify
 ```
+
+
